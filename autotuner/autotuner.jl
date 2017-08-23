@@ -1,22 +1,22 @@
-#addprocs()
+addprocs()
 
 import StochasticSearch, JSON
 
 @everywhere begin
     using StochasticSearch
 
-    function create_unique_dir()
-        unique_dir = string(Base.Random.uuid4())
-        mkdir(unique_dir)
+    function create_unique_dir(settings::Dict{Symbol, Any})
+        unique_dir = string(tempdir(), "/", Base.Random.uuid4())
+        mkpath(unique_dir)
 
-        cp(settings[:source], "$unique_dir/$(settings[:source])")
+        cp(settings[:source_dir], "$unique_dir/$(settings[:source_dir])")
         return unique_dir
     end
 
     function generate_compile_command(configuration::Configuration,
                                       unique_dir::String,
                                       settings::Dict{Symbol, Any})
-        command = split(strip(settings[:nvcc_cmd]))
+        command = split(strip(settings[:make_cmd]))
         append!(command, split(strip(settings[:cuda_path])))
 
         for parameter in keys(configuration.value)
@@ -29,19 +29,20 @@ import StochasticSearch, JSON
             end
         end
 
-        append!(command, ["$unique_dir/$(settings[:source])"])
-        append!(command, ["-o", "$unique_dir/$(settings[:executable])"])
+        append!(command, ["$unique_dir/$(settings[:source_dir])/$(settings[:source])"])
+        append!(command, ["-o", "$unique_dir/$(settings[:source_dir])/$(settings[:executable])"])
         return command
     end
 
     function execution_time(configuration::Configuration,
                             settings::Dict{Symbol, Any})
-        unique_dir      = create_unique_dir()
+
+        unique_dir      = create_unique_dir(settings)
         compile_command = generate_compile_command(configuration, unique_dir, settings)
 
         try
             run(`$compile_command`)
-            time = @elapsed run(`./$unique_dir/$(settings[:executable])`)
+            time = @elapsed run(`/$unique_dir/$(settings[:source_dir])/$(settings[:executable])`)
 
             rm(unique_dir, recursive = true)
             return time
@@ -53,7 +54,7 @@ import StochasticSearch, JSON
 end
 
 function generate_search_space(filename::String)
-    json_data       = JSON.parsefile(filename::AbstractString)
+    json_data       = JSON.parsefile(filename)
     parameter_types = ["flags", "enumeration_parameters", "numeric_parameters"]
     parameters      = Array{Parameter, 1}()
 
@@ -87,8 +88,10 @@ function generate_search_space(filename::String)
     return parameters
 end
 
-settings      = JSON.parsefile("settings.json", dicttype = Dict{Symbol, Any})
-configuration = Configuration(generate_search_space("nvcc_flags.json"),
+settings      = JSON.parsefile("settings/settings.json",
+                               dicttype = Dict{Symbol, Any})
+
+configuration = Configuration(generate_search_space("settings/nvcc_flags.json"),
                               "nvcc_configuration")
 
 tuning_run = Run(cost                = execution_time,
@@ -100,26 +103,36 @@ tuning_run = Run(cost                = execution_time,
                  report_after        = settings[:report_after],
                  reporting_criterion = elapsed_time_reporting_criterion,
                  duration            = settings[:duration],
-                 methods             = [[:simulated_annealing 1];])
+                 methods             = [[:simulated_annealing 1];
+                                        [:randomized_first_improvement 1];])
+                                        #[:iterated_local_search 1];
+                                        #[:iterative_probabilistic_improvement 1];])
 
 println("Starting tuning run...")
 
 @spawn optimize(tuning_run)
 result = take!(tuning_run.channel)
 
-print(result)
+@printf("Time: %.2f Cost: %.4f (Found by %s)\n",
+        result.current_time,
+        result.cost_minimum,
+        result.technique)
+
 while !result.is_final
     result = take!(tuning_run.channel)
-    print(result)
+    @printf("Time: %.2f Cost: %.4f (Found by %s)\n",
+            result.current_time,
+            result.cost_minimum,
+            result.technique)
 end
 
 println("Done.")
 println("Generating autotuned command...")
 
 file    = open("$(settings[:final_configuration])", "w+")
-command = generate_compile_command(result.minimum, ".", settings)
+command = join(generate_compile_command(result.minimum, ".", settings), " ")
 
-write(file, "$command")
+write(file, command)
 close(file)
 
 println("Done.")
