@@ -36,7 +36,6 @@ import StochasticSearch, JSON
 
     function execution_time(configuration::Configuration,
                             settings::Dict{Symbol, Any})
-
         unique_dir      = create_unique_dir(settings)
         compile_command = generate_compile_command(configuration, unique_dir, settings)
 
