@@ -1,4 +1,4 @@
-#addprocs()
+addprocs()
 
 import StochasticSearch, JSON
 
