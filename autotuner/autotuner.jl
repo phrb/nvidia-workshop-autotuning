@@ -1,4 +1,4 @@
-addprocs()
+#addprocs()
 
 import StochasticSearch, JSON
 
@@ -17,21 +17,43 @@ import StochasticSearch, JSON
                                       unique_dir::String,
                                       settings::Dict{Symbol, Any})
         command = split(strip(settings[:make_cmd]))
-        append!(command, split(strip(settings[:cuda_path])))
 
-        for parameter in keys(configuration.value)
-            if typeof(configuration[parameter]) <: BoolParameter && configuration[parameter].value == true
-                append!(command, split(strip(parameter)))
-            elseif typeof(configuration[parameter]) <: EnumParameter
-                append!(command, split(strip("$parameter$(configuration[parameter].current.value)")))
-            elseif typeof(configuration[parameter]) <: IntegerParameter
-                append!(command, split(strip("$parameter$(configuration[parameter].value)")))
+        if settings[:use_makefile]
+            push!(command, "$unique_dir/$(settings[:source_dir])")
+
+            append!(command, split(strip(settings[:flags_variable])))
+            parameters = ""
+
+            for parameter in keys(configuration.value)
+                if typeof(configuration[parameter]) <: BoolParameter && configuration[parameter].value == true
+                    parameters = string(parameters, " $parameter")
+                elseif typeof(configuration[parameter]) <: EnumParameter
+                    parameters = string(parameters, " $parameter$(configuration[parameter].current.value)")
+                elseif typeof(configuration[parameter]) <: IntegerParameter
+                    parameters = string(parameters, " $parameter$(configuration[parameter].value)")
+                end
             end
-        end
 
-        append!(command, ["$unique_dir/$(settings[:source_dir])/$(settings[:source])"])
-        append!(command, ["-o", "$unique_dir/$(settings[:source_dir])/$(settings[:executable])"])
-        return command
+            push!(command, parameters)
+            return Cmd(`$(command[1]) $(command[2]) $(command[3]) $(command[4])\"$(command[5])\"`)
+        else
+            append!(command, split(strip(settings[:cuda_path])))
+
+            for parameter in keys(configuration.value)
+                if typeof(configuration[parameter]) <: BoolParameter && configuration[parameter].value == true
+                    append!(command, split(strip(parameter)))
+                elseif typeof(configuration[parameter]) <: EnumParameter
+                    append!(command, split(strip("$parameter$(configuration[parameter].current.value)")))
+                elseif typeof(configuration[parameter]) <: IntegerParameter
+                    append!(command, split(strip("$parameter$(configuration[parameter].value)")))
+                end
+            end
+
+            append!(command, ["$unique_dir/$(settings[:source_dir])/$(settings[:source])"])
+            append!(command, ["-o", "$unique_dir/$(settings[:source_dir])/$(settings[:executable])"])
+
+            return Cmd(`$command`)
+        end
     end
 
     function execution_time(configuration::Configuration,
@@ -40,12 +62,13 @@ import StochasticSearch, JSON
         compile_command = generate_compile_command(configuration, unique_dir, settings)
 
         try
-            run(`$compile_command`)
+            run(compile_command)
             time = @elapsed run(`/$unique_dir/$(settings[:source_dir])/$(settings[:executable])`)
 
             rm(unique_dir, recursive = true)
             return time
-        catch
+        catch exception
+            println(exception)
             rm(unique_dir, recursive = true)
             return Base.Inf
         end
