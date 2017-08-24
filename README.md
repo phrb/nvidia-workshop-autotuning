@@ -42,10 +42,16 @@ $ JULIA_NIGHTLY/bin/julia autotuner.jl
 
 The final autotuned parameters will be written to the `final_configuration.txt` file.
 To compile the optimized binary, simply run the NVCC command in `final_configuration.txt`.
-You can also run:
+You can also run, in `zsh`:
 
 ```
 $ echo `$(cat final_configuration.txt)`
+```
+
+Or, for `bash`:
+
+```
+$ cat final_configuration.txt | bash
 ```
 
 You can easily add new tunable NVCC or GCC parameters by changing the `autotuner/settings/nvcc_flags.json`.
