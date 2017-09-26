@@ -68,7 +68,6 @@ import StochasticSearch, JSON
             rm(unique_dir, recursive = true)
             return time
         catch exception
-            println(exception)
             rm(unique_dir, recursive = true)
             return Base.Inf
         end
